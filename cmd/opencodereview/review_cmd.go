@@ -117,6 +117,14 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	}
 	applyCLIExcludes(cc, splitPaths(opts.excludes))
 
+	var patchInput diff.InputResolution
+	if opts.diffDir != "" {
+		patchInput, err = diff.MaterializePatchSnapshot(ctx, cc.RepoDir, opts.diffDir, cc.GitRunner)
+		if err != nil {
+			return fmt.Errorf("prepare patch post-image: %w", err)
+		}
+	}
+
 	// Security (#112): reject ref-option injection before any git invocation.
 	if err := validateReviewRefs(cc.RepoDir, opts); err != nil {
 		return err
@@ -129,7 +137,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	opts.background = bg
 
 	if opts.preview {
-		return runPreviewContext(ctx, cc, opts)
+		return runPreviewContext(ctx, cc, opts, patchInput)
 	}
 
 	resumeState, err := loadReviewResumeState(cc.RepoDir, opts)
@@ -170,10 +178,15 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	}
 
 	mode := tool.ParseReviewMode(opts.from, opts.to, opts.commit)
+	ref := fileReadRef(mode, opts, sealedInput)
+	if opts.diffDir != "" {
+		mode = tool.ModeCommit
+		ref = patchInput.ResolvedHead
+	}
 	fileReader := &tool.FileReader{
 		RepoDir: cc.RepoDir,
 		Mode:    mode,
-		Ref:     fileReadRef(mode, opts, sealedInput),
+		Ref:     ref,
 		Runner:  cc.GitRunner,
 	}
 	tools := buildToolRegistry(rt.Collector, fileReader)
@@ -197,6 +210,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		To:                    opts.to,
 		Commit:                opts.commit,
 		DiffDir:               opts.diffDir,
+		PatchInput:            patchInput,
 		ReviewMode:            reviewModeFromOptions(opts),
 		Template:              *cc.Template,
 		SystemRule:            cc.Resolver,
@@ -474,12 +488,14 @@ func validateReviewRefs(repoDir string, opts reviewOptions) error {
 	return nil
 }
 
-func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOptions) error {
+func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOptions, patchInput diff.InputResolution) error {
 	preview, err := agent.Preview(ctx, agent.Args{
 		RepoDir:    cc.RepoDir,
 		From:       opts.from,
 		To:         opts.to,
 		Commit:     opts.commit,
+		DiffDir:    opts.diffDir,
+		PatchInput: patchInput,
 		FileFilter: cc.FileFilter,
 		GitRunner:  cc.GitRunner,
 	})

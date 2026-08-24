@@ -7,12 +7,13 @@ import (
 	"context"
 	"testing"
 
+	"github.com/alibaba/open-code-review/internal/diff"
 	"github.com/alibaba/open-code-review/internal/model"
 	"github.com/alibaba/open-code-review/internal/tool"
 )
 
 func runPreview(cc *commonContext, opts reviewOptions) error {
-	return runPreviewContext(context.Background(), cc, opts)
+	return runPreviewContext(context.Background(), cc, opts, diff.InputResolution{})
 }
 
 func TestRunPreview(t *testing.T) {

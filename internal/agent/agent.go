@@ -65,6 +65,8 @@ type Args struct {
 
 	// DiffDir contains externally supplied unified diff files for patch mode.
 	DiffDir string
+	// PatchInput identifies the materialized pre- and post-image for patch mode.
+	PatchInput diff.InputResolution
 
 	// ReviewMode is one of "workspace", "range", "commit", or "patch".
 	// When empty, it is derived from From/To/Commit at session creation time.
@@ -519,7 +521,7 @@ func (a *Agent) loadDiffs(ctx context.Context) error {
 
 	switch {
 	case a.args.DiffDir != "":
-		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, a.args.GitRunner)
+		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, a.args.PatchInput.ResolvedBase, a.args.PatchInput.ResolvedHead, a.args.GitRunner)
 	case commit != "":
 		provider = diff.NewCommitProvider(a.args.RepoDir, commit, a.args.GitRunner)
 	case from != "" && to != "":
