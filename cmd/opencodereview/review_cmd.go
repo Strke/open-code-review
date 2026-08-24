@@ -33,6 +33,7 @@ type reviewOptions struct {
 	from            string
 	to              string
 	commit          string
+	diffDir         string
 	resume          string
 	excludes        string
 	outputFormat    string
@@ -68,6 +69,9 @@ var reviewCmd = &cobra.Command{
   # Review a specific commit
   ocr review --commit abc123
   ocr review -c abc123
+
+  # Review external patch files against a local repository
+  ocr review --repo /path/to/repository --diff /path/to/diffs
 
   # Resume a previous range review
   ocr review --from master --to dev-ref --resume <session-id>
@@ -192,6 +196,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		From:                  opts.from,
 		To:                    opts.to,
 		Commit:                opts.commit,
+		DiffDir:               opts.diffDir,
 		ReviewMode:            reviewModeFromOptions(opts),
 		Template:              *cc.Template,
 		SystemRule:            cc.Resolver,
@@ -406,6 +411,9 @@ func fileReadRef(mode tool.ReviewMode, opts reviewOptions, sealed *diff.InputRes
 }
 
 func reviewModeFromOptions(opts reviewOptions) string {
+	if opts.diffDir != "" {
+		return session.ReviewModePatch
+	}
 	if opts.commit != "" {
 		return session.ReviewModeCommit
 	}

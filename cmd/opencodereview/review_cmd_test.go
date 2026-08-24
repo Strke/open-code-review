@@ -23,6 +23,19 @@ func TestValidateReviewRefsRejectsOptionLikeCommit(t *testing.T) {
 	}
 }
 
+func TestValidateReviewOptionsRejectsMixedPatchAndGitModes(t *testing.T) {
+	err := validateReviewOptions(&reviewOptions{diffDir: t.TempDir(), from: "main", to: "HEAD"})
+	if err == nil || !strings.Contains(err.Error(), "--diff cannot be combined") {
+		t.Fatalf("expected mixed mode error, got %v", err)
+	}
+}
+
+func TestReviewModeFromOptionsPatch(t *testing.T) {
+	if got := reviewModeFromOptions(reviewOptions{diffDir: "patches"}); got != session.ReviewModePatch {
+		t.Fatalf("reviewModeFromOptions() = %q, want %q", got, session.ReviewModePatch)
+	}
+}
+
 func TestReviewResultErrorUsesManifestTerminalState(t *testing.T) {
 	for _, state := range []session.TerminalState{session.StateComplete, session.StatePartial, session.StateSkipped} {
 		if err := reviewResultError(nil, &session.RunManifest{TerminalState: state}); err != nil {

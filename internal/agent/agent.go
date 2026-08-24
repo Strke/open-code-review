@@ -63,7 +63,10 @@ type Args struct {
 	// Commit is a single commit hash to review (vs its parent).
 	Commit string
 
-	// ReviewMode is one of "workspace", "range", or "commit".
+	// DiffDir contains externally supplied unified diff files for patch mode.
+	DiffDir string
+
+	// ReviewMode is one of "workspace", "range", "commit", or "patch".
 	// When empty, it is derived from From/To/Commit at session creation time.
 	// Full-scan reviews are owned by internal/scan and never reach this Args.
 	ReviewMode string
@@ -493,7 +496,7 @@ func (a *Agent) recordWarning(warningType, file, message string) {
 
 // loadDiffs populates the diff-related fields.
 func (a *Agent) loadDiffs(ctx context.Context) error {
-	var provider *diff.Provider
+	var provider diff.InputProvider
 
 	// A sealed input substitutes the commit SHAs a pre-flight resolve already froze
 	// for the refs the user typed. Both loads then read the same immutable objects,
@@ -515,6 +518,8 @@ func (a *Agent) loadDiffs(ctx context.Context) error {
 	}
 
 	switch {
+	case a.args.DiffDir != "":
+		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, a.args.GitRunner)
 	case commit != "":
 		provider = diff.NewCommitProvider(a.args.RepoDir, commit, a.args.GitRunner)
 	case from != "" && to != "":
@@ -885,6 +890,9 @@ func (a *Agent) initManifest() {
 // and stays stable across a resume chain (independent of an explicit ReviewMode
 // label). It is also the mode component of every item_id.
 func (a *Agent) manifestMode() string {
+	if a.args.DiffDir != "" || a.args.ReviewMode == session.ReviewModePatch {
+		return session.InputModePatch
+	}
 	return reviewModeString(a.args.From, a.args.To, a.args.Commit)
 }
 

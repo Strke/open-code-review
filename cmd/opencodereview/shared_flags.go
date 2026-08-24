@@ -103,6 +103,14 @@ func validateAudience(audience string) error {
 }
 
 func validateReviewOptions(opts *reviewOptions) error {
+	if opts.diffDir != "" {
+		if opts.from != "" || opts.to != "" || opts.commit != "" {
+			return fmt.Errorf("--diff cannot be combined with --from/--to or --commit")
+		}
+		if opts.resume != "" {
+			return fmt.Errorf("--diff cannot be combined with --resume")
+		}
+	}
 	if err := validateDiffMode(opts.from, opts.to, opts.commit); err != nil {
 		return err
 	}
@@ -170,6 +178,7 @@ func registerReviewFlags(cmd *cobra.Command, opts *reviewOptions) {
 	addRuleFlag(cmd, &opts.rulePath)
 	addRepoFlag(cmd, &opts.repoDir)
 	addDiffFlags(cmd, &opts.from, &opts.to, &opts.commit)
+	cmd.Flags().StringVar(&opts.diffDir, "diff", "", "directory containing unified .patch or .diff files")
 	cmd.Flags().StringVar(&opts.resume, "resume", "", "resume from a previous review session id")
 	cmd.RegisterFlagCompletionFunc("resume", completeSessionIDs)
 	addExcludeFlag(cmd, &opts.excludes)

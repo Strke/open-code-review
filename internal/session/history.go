@@ -31,6 +31,7 @@ const (
 	ReviewModeWorkspace = "workspace"
 	ReviewModeRange     = "range"
 	ReviewModeCommit    = "commit"
+	ReviewModePatch     = "patch"
 	ReviewModeFullScan  = "full_scan"
 )
 
