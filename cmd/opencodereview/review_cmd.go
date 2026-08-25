@@ -179,7 +179,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	// Strictly before agent.New, so a rejected resume persists nothing. The sealed
 	// input it returns pins the run to the very commits this check passed on, so
 	// the decision cannot be undone by a ref moving afterwards.
-	sealed, err := validateResumeIdentity(ctx, cc, opts, rt, resumeState)
+	sealed, err := validateResumeIdentity(ctx, cc, opts, rt, resumeState, patchInput)
 	if err != nil {
 		return err
 	}
@@ -394,20 +394,28 @@ func loadReviewResumeState(repoDir string, opts reviewOptions) (*session.ResumeS
 // command line: both default to the empty string and nothing else can set them,
 // so a provider that changed via config file or environment stays implicit —
 // which is the transition this check exists to reject.
-func validateResumeIdentity(ctx context.Context, cc *commonContext, opts reviewOptions, rt *llmRuntime, state *session.ResumeState) (*agent.SealedInput, error) {
+func validateResumeIdentity(ctx context.Context, cc *commonContext, opts reviewOptions, rt *llmRuntime, state *session.ResumeState, patchInputs ...*diff.InputResolution) (*agent.SealedInput, error) {
 	if state == nil {
 		return nil, nil
 	}
+	var patchInput *diff.InputResolution
+	if len(patchInputs) > 0 {
+		patchInput = patchInputs[0]
+	}
 	sealed, err := agent.ResolveIdentity(ctx, agent.Args{
-		RepoDir:    cc.RepoDir,
-		From:       opts.from,
-		To:         opts.to,
-		Commit:     opts.commit,
-		ReviewMode: reviewModeFromOptions(opts),
-		Template:   *cc.Template,
-		SystemRule: cc.Resolver,
-		FileFilter: cc.FileFilter,
-		GitRunner:  cc.GitRunner,
+		RepoDir:     cc.RepoDir,
+		From:        opts.from,
+		To:          opts.to,
+		Commit:      opts.commit,
+		ReviewMode:  reviewModeFromOptions(opts),
+		Template:    *cc.Template,
+		SystemRule:  cc.Resolver,
+		FileFilter:  cc.FileFilter,
+		GitRunner:   cc.GitRunner,
+		PatchRef:    opts.branch,
+		DiffApply:   opts.diffApply,
+		DiffDir:     opts.diffDir,
+		SealedInput: patchInput,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolve current input identity: %w", err)

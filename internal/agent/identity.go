@@ -45,7 +45,11 @@ type SealedInput struct {
 func ResolveIdentity(ctx context.Context, args Args) (*SealedInput, error) {
 	defer stdout.Quiet()()
 
-	resolution, err := resolveInputBeforeDiff(ctx, args)
+	resolution := args.SealedInput
+	var err error
+	if resolution == nil {
+		resolution, err = resolveInputBeforeDiff(ctx, args)
+	}
 	if err != nil {
 		return nil, err
 	}
