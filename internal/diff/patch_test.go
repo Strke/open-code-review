@@ -6,9 +6,17 @@ package diff
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+func gitOutNoFail(repo string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
 
 func TestPatchProviderReadsPatchDirectoryInOrder(t *testing.T) {
 	repo := t.TempDir()
@@ -154,5 +162,28 @@ func TestMaterializePatchCommitOverridesInheritedIndexFile(t *testing.T) {
 	}
 	if string(afterIndex) != string(originalIndex) {
 		t.Fatal("inherited repository index was modified")
+	}
+}
+
+func TestMaterializePatchCommitSkipsExternalBinarySections(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package a\n", "base")
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1,2 @@\n package a\n+func A() {}\n\n" +
+		"diff --git a/image.png b/image.png\nnew file mode 100644\nBinary files /dev/null and b/image.png differ\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	postImage, err := MaterializePatchCommit(context.Background(), repo, patchDir, base, nil)
+	if err != nil {
+		t.Fatalf("MaterializePatchCommit: %v", err)
+	}
+	if got := gitOut(t, repo, "show", postImage+":a.go"); got != "package a\nfunc A() {}" {
+		t.Fatalf("text post-image = %q", got)
+	}
+	if _, err := gitOutNoFail(repo, "show", postImage+":image.png"); err == nil {
+		t.Fatal("external binary patch unexpectedly created a blob without binary data")
 	}
 }

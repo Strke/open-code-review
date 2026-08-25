@@ -69,6 +69,49 @@ func patchPaths(diffDir string) ([]string, error) {
 	return paths, nil
 }
 
+// stripBinaryPatchSections removes binary file sections that do not carry blob
+// data. External PR patches commonly contain only "Binary files ... differ",
+// which git apply cannot materialize when the new blob is not in the object
+// database. Text sections remain applicable and the parser still reports the
+// omitted files as binary changes.
+func stripBinaryPatchSections(data []byte) ([]byte, bool) {
+	lines := strings.Split(string(data), "\n")
+	var output strings.Builder
+	var section strings.Builder
+	sectionIsBinary := false
+	hadSection := false
+	skipped := false
+	flush := func() {
+		if section.Len() == 0 {
+			return
+		}
+		if sectionIsBinary {
+			skipped = true
+		} else {
+			output.WriteString(section.String())
+		}
+		section.Reset()
+		sectionIsBinary = false
+	}
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "diff --git ") {
+			flush()
+			hadSection = true
+		}
+		if strings.HasPrefix(line, "Binary files ") || strings.HasPrefix(line, "GIT binary patch") {
+			sectionIsBinary = true
+		}
+		section.WriteString(line)
+		section.WriteByte('\n')
+	}
+	flush()
+	if !hadSection {
+		return data, false
+	}
+	return []byte(strings.TrimSuffix(output.String(), "\n")), skipped
+}
+
 // MaterializePatchCommit applies the patch directory to base in a temporary
 // index and creates an unreferenced commit for use as an immutable post-image.
 // It does not modify the working tree, the selected branch, or any repository ref.
@@ -110,7 +153,14 @@ func MaterializePatchCommit(ctx context.Context, repoDir, diffDir, base string, 
 		if err != nil {
 			return "", fmt.Errorf("read patch %q: %w", path, err)
 		}
-		if out, err := run(data, "apply", "--cached", "--whitespace=nowarn"); err != nil {
+		applyData, skippedBinary := stripBinaryPatchSections(data)
+		if skippedBinary {
+			fmt.Fprintf(os.Stderr, "[ocr] WARNING: skipping binary patch sections in %s; external patch has no binary blob data\n", path)
+		}
+		if len(bytes.TrimSpace(applyData)) == 0 {
+			continue
+		}
+		if out, err := run(applyData, "apply", "--cached", "--whitespace=nowarn"); err != nil {
 			return "", fmt.Errorf("apply patch %q to %s: %w: %s", path, base, err, strings.TrimSpace(string(out)))
 		}
 	}
