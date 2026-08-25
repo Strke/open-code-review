@@ -68,9 +68,13 @@ func ResolveIdentity(ctx context.Context, args Args) (*SealedInput, error) {
 func resolveInputBeforeDiff(ctx context.Context, args Args) (*diff.InputResolution, error) {
 	switch {
 	case args.DiffDir != "":
-		head, err := resolveCommitHead(ctx, args, "HEAD")
+		ref := args.PatchRef
+		if ref == "" {
+			ref = "HEAD"
+		}
+		head, err := resolveCommitHead(ctx, args, ref)
 		if err != nil {
-			return nil, fmt.Errorf("resolve repository HEAD for patch post-image: %w", err)
+			return nil, fmt.Errorf("resolve patch post-image ref %q: %w", ref, err)
 		}
 		return &diff.InputResolution{ResolvedHead: head}, nil
 	case args.Commit != "":

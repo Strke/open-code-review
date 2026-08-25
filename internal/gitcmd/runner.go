@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 )
 
@@ -66,6 +67,27 @@ func (r *Runner) Output(ctx context.Context, repoDir string, args ...string) ([]
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoDir
 	return cmd.Output()
+}
+
+// OutputWithInputEnv executes a git command with stdin and additional
+// environment variables, returning stdout only.
+func (r *Runner) OutputWithInputEnv(ctx context.Context, repoDir string, input []byte, env []string, args ...string) ([]byte, error) {
+	if err := r.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer r.release()
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Stdin = bytes.NewReader(input)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil && stderr.Len() > 0 {
+		return nil, fmt.Errorf("%w: %s", err, stderr.String())
+	}
+	return out, err
 }
 
 // RunSplit executes a git command and returns stdout and stderr separately.

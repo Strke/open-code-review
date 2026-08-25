@@ -63,3 +63,54 @@ func TestPatchProviderReadsPostImageFromRef(t *testing.T) {
 		t.Fatalf("ResolvedHead = %q, want %q", got, head)
 	}
 }
+
+func TestMaterializePatchCommit(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package a\n", "base")
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("dirty workspace\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1,3 @@\n package a\n+\n+func A() {}\ndiff --git a/new.go b/new.go\nnew file mode 100644\n--- /dev/null\n+++ b/new.go\n@@ -0,0 +1 @@\n+package a\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	postImage, err := MaterializePatchCommit(context.Background(), repo, patchDir, base, nil)
+	if err != nil {
+		t.Fatalf("MaterializePatchCommit: %v", err)
+	}
+	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("HEAD moved to %q, want base %q", got, base)
+	}
+	if got := gitOut(t, repo, "show", postImage+":a.go"); got != "package a\n\nfunc A() {}" {
+		t.Fatalf("post-image a.go = %q", got)
+	}
+	if got := gitOut(t, repo, "show", postImage+":new.go"); got != "package a" {
+		t.Fatalf("post-image new.go = %q", got)
+	}
+	content, err := os.ReadFile(filepath.Join(repo, "a.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "dirty workspace\n" {
+		t.Fatalf("working tree changed to %q", got)
+	}
+}
+
+func TestMaterializePatchCommitRejectsPatchForWrongBase(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package a\n", "base")
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-package wrong\n+package changed\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "bad.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := MaterializePatchCommit(context.Background(), repo, patchDir, base, nil); err == nil {
+		t.Fatal("expected patch application to fail against the wrong base")
+	}
+}

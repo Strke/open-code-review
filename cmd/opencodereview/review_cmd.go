@@ -34,6 +34,8 @@ type reviewOptions struct {
 	to              string
 	commit          string
 	diffDir         string
+	branch          string
+	diffApply       bool
 	resume          string
 	excludes        string
 	outputFormat    string
@@ -70,8 +72,11 @@ var reviewCmd = &cobra.Command{
   ocr review --commit abc123
   ocr review -c abc123
 
-  # Review external patch files against a local repository
+  # Review external patch files against the current HEAD of a local repository
   ocr review --repo /path/to/repository --diff /path/to/diffs
+
+  # Review external patch files against a specific branch tip
+  ocr review --repo /path/to/repository --diff /path/to/diffs --branch feature
 
   # Resume a previous range review
   ocr review --from master --to dev-ref --resume <session-id>
@@ -124,9 +129,19 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 
 	var patchInput *diff.InputResolution
 	if opts.diffDir != "" {
-		head := diff.NewCommitProvider(cc.RepoDir, "HEAD", cc.GitRunner).ResolveInput(ctx).ResolvedHead
+		ref := opts.branch
+		if ref == "" {
+			ref = "HEAD"
+		}
+		head := diff.NewCommitProvider(cc.RepoDir, ref, cc.GitRunner).ResolveInput(ctx).ResolvedHead
 		if head == "" {
-			return fmt.Errorf("resolve --repo HEAD for patch post-image")
+			return fmt.Errorf("resolve patch post-image ref %q in --repo", ref)
+		}
+		if opts.diffApply {
+			head, err = diff.MaterializePatchCommit(ctx, cc.RepoDir, opts.diffDir, head, cc.GitRunner)
+			if err != nil {
+				return fmt.Errorf("materialize patch post-image: %w", err)
+			}
 		}
 		patchInput = &diff.InputResolution{ResolvedHead: head}
 	}
@@ -211,6 +226,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		To:                    opts.to,
 		Commit:                opts.commit,
 		DiffDir:               opts.diffDir,
+		PatchRef:              opts.branch,
 		ReviewMode:            reviewModeFromOptions(opts),
 		Template:              *cc.Template,
 		SystemRule:            cc.Resolver,
@@ -469,6 +485,7 @@ func validateReviewRefs(repoDir string, opts reviewOptions) error {
 		{"--from", opts.from},
 		{"--to", opts.to},
 		{"--commit", opts.commit},
+		{"--branch", opts.branch},
 	}
 	for _, item := range refs {
 		if item.ref == "" {
@@ -495,6 +512,7 @@ func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOption
 		To:          opts.to,
 		Commit:      opts.commit,
 		DiffDir:     opts.diffDir,
+		PatchRef:    opts.branch,
 		FileFilter:  cc.FileFilter,
 		GitRunner:   cc.GitRunner,
 		SealedInput: sealedInput,

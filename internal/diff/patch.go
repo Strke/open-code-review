@@ -4,10 +4,12 @@
 package diff
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,19 +36,17 @@ func (p *PatchProvider) ResolveInput(context.Context) InputResolution {
 
 func (p *PatchProvider) RemoteIdentity(context.Context) string { return "" }
 
-// GetDiff reads .patch and .diff files in lexical order and parses their
-// contents using the same unified-diff parser as git-backed review modes.
-func (p *PatchProvider) GetDiff(ctx context.Context) ([]model.Diff, error) {
-	info, err := os.Stat(p.diffDir)
+func patchPaths(diffDir string) ([]string, error) {
+	info, err := os.Stat(diffDir)
 	if err != nil {
 		return nil, fmt.Errorf("stat diff directory: %w", err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("diff path %q is not a directory", p.diffDir)
+		return nil, fmt.Errorf("diff path %q is not a directory", diffDir)
 	}
 
 	var paths []string
-	err = filepath.WalkDir(p.diffDir, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(diffDir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -64,7 +64,76 @@ func (p *PatchProvider) GetDiff(ctx context.Context) ([]model.Diff, error) {
 	}
 	sort.Strings(paths)
 	if len(paths) == 0 {
-		return nil, fmt.Errorf("diff directory %q contains no .patch or .diff files", p.diffDir)
+		return nil, fmt.Errorf("diff directory %q contains no .patch or .diff files", diffDir)
+	}
+	return paths, nil
+}
+
+// MaterializePatchCommit applies the patch directory to base in a temporary
+// index and creates an unreferenced commit for use as an immutable post-image.
+// It does not modify the working tree, the selected branch, or any repository ref.
+func MaterializePatchCommit(ctx context.Context, repoDir, diffDir, base string, runner *gitcmd.Runner) (string, error) {
+	paths, err := patchPaths(diffDir)
+	if err != nil {
+		return "", err
+	}
+	index, err := os.CreateTemp("", "ocr-patch-index-*")
+	if err != nil {
+		return "", fmt.Errorf("create temporary patch index: %w", err)
+	}
+	indexPath := index.Name()
+	if err := index.Close(); err != nil {
+		os.Remove(indexPath)
+		return "", fmt.Errorf("close temporary patch index: %w", err)
+	}
+	if err := os.Remove(indexPath); err != nil {
+		return "", fmt.Errorf("prepare temporary patch index: %w", err)
+	}
+	defer os.Remove(indexPath)
+	env := []string{"GIT_INDEX_FILE=" + indexPath}
+
+	run := func(input []byte, args ...string) ([]byte, error) {
+		if runner != nil {
+			return runner.OutputWithInputEnv(ctx, repoDir, input, env, args...)
+		}
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(), env...)
+		cmd.Stdin = bytes.NewReader(input)
+		return cmd.CombinedOutput()
+	}
+	if out, err := run(nil, "read-tree", base); err != nil {
+		return "", fmt.Errorf("initialize patch snapshot from %s: %w: %s", base, err, strings.TrimSpace(string(out)))
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read patch %q: %w", path, err)
+		}
+		if out, err := run(data, "apply", "--cached", "--whitespace=nowarn"); err != nil {
+			return "", fmt.Errorf("apply patch %q to %s: %w: %s", path, base, err, strings.TrimSpace(string(out)))
+		}
+	}
+	treeOut, err := run(nil, "write-tree")
+	if err != nil {
+		return "", fmt.Errorf("write patch snapshot tree: %w: %s", err, strings.TrimSpace(string(treeOut)))
+	}
+	tree := strings.TrimSpace(string(treeOut))
+	commitOut, err := run([]byte("OpenCodeReview patch post-image\n"),
+		"-c", "user.name=OpenCodeReview", "-c", "user.email=ocr@localhost",
+		"commit-tree", tree, "-p", base)
+	if err != nil {
+		return "", fmt.Errorf("create patch snapshot commit: %w: %s", err, strings.TrimSpace(string(commitOut)))
+	}
+	return strings.TrimSpace(string(commitOut)), nil
+}
+
+// GetDiff reads .patch and .diff files in lexical order and parses their
+// contents using the same unified-diff parser as git-backed review modes.
+func (p *PatchProvider) GetDiff(ctx context.Context) ([]model.Diff, error) {
+	paths, err := patchPaths(p.diffDir)
+	if err != nil {
+		return nil, err
 	}
 
 	var combined strings.Builder

@@ -65,6 +65,9 @@ type Args struct {
 
 	// DiffDir contains externally supplied unified diff files for patch mode.
 	DiffDir string
+	// PatchRef is the repository ref whose tip is the patch post-image.
+	// Empty selects HEAD.
+	PatchRef string
 
 	// ReviewMode is one of "workspace", "range", "commit", or "patch".
 	// When empty, it is derived from From/To/Commit at session creation time.
@@ -524,9 +527,13 @@ func (a *Agent) loadDiffs(ctx context.Context) error {
 			ref = a.args.SealedInput.ResolvedHead
 		}
 		if ref == "" {
-			ref = diff.NewCommitProvider(a.args.RepoDir, "HEAD", a.args.GitRunner).ResolveInput(ctx).ResolvedHead
+			patchRef := a.args.PatchRef
+			if patchRef == "" {
+				patchRef = "HEAD"
+			}
+			ref = diff.NewCommitProvider(a.args.RepoDir, patchRef, a.args.GitRunner).ResolveInput(ctx).ResolvedHead
 			if ref == "" {
-				return fmt.Errorf("resolve repository HEAD for patch post-image")
+				return fmt.Errorf("resolve patch post-image ref %q", patchRef)
 			}
 		}
 		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, ref, a.args.GitRunner)
@@ -917,6 +924,11 @@ func (a *Agent) manifestInput() session.ManifestInput {
 		in.RequestedHead = a.args.To
 	case session.InputModeCommit:
 		in.RequestedHead = a.args.Commit
+	case session.InputModePatch:
+		in.RequestedHead = a.args.PatchRef
+		if in.RequestedHead == "" {
+			in.RequestedHead = "HEAD"
+		}
 	}
 	return in
 }
