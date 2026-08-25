@@ -214,6 +214,27 @@ func TestResolveInputBeforeDiffPatchBranch(t *testing.T) {
 	}
 }
 
+func TestResolveInputBeforeDiffPatchDefaultsToHead(t *testing.T) {
+	dir := sealRepo(t)
+	want := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	patchDir := t.TempDir()
+	patch := "diff --git a/base.txt b/base.txt\n--- a/base.txt\n+++ b/base.txt\n@@ -1 +1 @@\n-base\n+post-image\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolution, err := resolveInputBeforeDiff(context.Background(), Args{
+		RepoDir: dir,
+		DiffDir: patchDir,
+	})
+	if err != nil {
+		t.Fatalf("resolveInputBeforeDiff: %v", err)
+	}
+	if resolution.ResolvedHead != want {
+		t.Fatalf("ResolvedHead = %q, want HEAD %q", resolution.ResolvedHead, want)
+	}
+}
+
 func TestResolveInputBeforeDiffRejectsInvalidRefs(t *testing.T) {
 	dir := sealRepo(t)
 	for _, tc := range []struct {

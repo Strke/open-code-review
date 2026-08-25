@@ -133,7 +133,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	}
 
 	var patchInput *diff.InputResolution
-	if opts.diffDir != "" && (opts.branch != "" || (opts.diffApply && !opts.preview)) {
+	if opts.diffDir != "" {
 		ref := opts.branch
 		if ref == "" {
 			ref = "HEAD"
