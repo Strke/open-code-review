@@ -114,3 +114,45 @@ func TestMaterializePatchCommitRejectsPatchForWrongBase(t *testing.T) {
 		t.Fatal("expected patch application to fail against the wrong base")
 	}
 }
+
+func TestMaterializePatchCommitOverridesInheritedIndexFile(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package a\n", "base")
+	base := gitOut(t, repo, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package staged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repo, "add", "a.go")
+	indexPath := filepath.Join(repo, ".git", "index")
+	originalIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalIndexFile, hadIndexFile := os.LookupEnv("GIT_INDEX_FILE")
+	if err := os.Setenv("GIT_INDEX_FILE", indexPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if hadIndexFile {
+			_ = os.Setenv("GIT_INDEX_FILE", originalIndexFile)
+		} else {
+			_ = os.Unsetenv("GIT_INDEX_FILE")
+		}
+	})
+
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1,2 @@\n package a\n+func A() {}\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MaterializePatchCommit(context.Background(), repo, patchDir, base, nil); err != nil {
+		t.Fatalf("MaterializePatchCommit: %v", err)
+	}
+	afterIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterIndex) != string(originalIndex) {
+		t.Fatal("inherited repository index was modified")
+	}
+}

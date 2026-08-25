@@ -98,7 +98,7 @@ func MaterializePatchCommit(ctx context.Context, repoDir, diffDir, base string, 
 		}
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = repoDir
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = gitcmd.MergeEnv(os.Environ(), env)
 		cmd.Stdin = bytes.NewReader(input)
 		return cmd.CombinedOutput()
 	}
