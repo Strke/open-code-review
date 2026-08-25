@@ -25,7 +25,7 @@ func TestValidateReviewRefsRejectsOptionLikeCommit(t *testing.T) {
 
 func TestValidateReviewOptionsRejectsMixedPatchAndGitModes(t *testing.T) {
 	err := validateReviewOptions(&reviewOptions{diffDir: t.TempDir(), from: "main", to: "HEAD"})
-	if err == nil || !strings.Contains(err.Error(), "--diff cannot be combined") {
+	if err == nil || !strings.Contains(err.Error(), "--patch cannot be combined") {
 		t.Fatalf("expected mixed mode error, got %v", err)
 	}
 }

@@ -49,7 +49,7 @@ func TestParseReviewFlagsProviderAndModelOverrides(t *testing.T) {
 }
 
 func TestParseReviewFlagsPatchBranch(t *testing.T) {
-	opts, err := parseReviewFlags([]string{"--repo", "/tmp/repo", "--diff", "/tmp/patches", "--branch", "feature"})
+	opts, err := parseReviewFlags([]string{"--repo", "/tmp/repo", "--patch", "/tmp/patches", "--branch", "feature"})
 	if err != nil {
 		t.Fatalf("parseReviewFlags: %v", err)
 	}
@@ -60,12 +60,12 @@ func TestParseReviewFlagsPatchBranch(t *testing.T) {
 
 func TestParseReviewFlagsBranchRequiresDiff(t *testing.T) {
 	if _, err := parseReviewFlags([]string{"--branch", "feature"}); err == nil {
-		t.Fatal("expected --branch without --diff to fail")
+		t.Fatal("expected --branch without --patch to fail")
 	}
 }
 
 func TestParseReviewFlagsDiffApply(t *testing.T) {
-	opts, err := parseReviewFlags([]string{"--diff", "/tmp/patches", "--diff-apply"})
+	opts, err := parseReviewFlags([]string{"--patch", "/tmp/patches", "--diff-apply"})
 	if err != nil {
 		t.Fatalf("parseReviewFlags: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestParseReviewFlagsDiffApply(t *testing.T) {
 
 func TestParseReviewFlagsDiffApplyRequiresDiff(t *testing.T) {
 	if _, err := parseReviewFlags([]string{"--diff-apply"}); err == nil {
-		t.Fatal("expected --diff-apply without --diff to fail")
+		t.Fatal("expected --diff-apply without --patch to fail")
 	}
 }
 

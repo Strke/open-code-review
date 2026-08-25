@@ -73,10 +73,10 @@ var reviewCmd = &cobra.Command{
   ocr review -c abc123
 
   # Review external patch files against the current HEAD of a local repository
-  ocr review --repo /path/to/repository --diff /path/to/diffs
+  ocr review --repo /path/to/repository --patch /path/to/diffs
 
   # Review external patch files against a specific branch tip
-  ocr review --repo /path/to/repository --diff /path/to/diffs --branch feature
+  ocr review --repo /path/to/repository --patch /path/to/diffs --branch feature
 
   # Resume a previous range review
   ocr review --from master --to dev-ref --resume <session-id>
