@@ -319,11 +319,18 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		}
 		emitFailureUsage(ag, time.Since(startTime), opts.outputFormat, llmIdentity, failureReport)
 		if id := ag.SessionID(); id != "" {
-			fmt.Fprintf(os.Stderr, "[ocr] Session: %s (retry with: --resume %s)\n", id, id)
+			fmt.Fprintln(os.Stderr, reviewFailureSessionMessage(id, opts))
 		}
 		return errors.Join(resultErr, emitErr)
 	}
 	return emitErr
+}
+
+func reviewFailureSessionMessage(id string, opts reviewOptions) string {
+	if opts.diffDir != "" {
+		return fmt.Sprintf("[ocr] Session: %s", id)
+	}
+	return fmt.Sprintf("[ocr] Session: %s (retry with: --resume %s)", id, id)
 }
 
 func reviewResultError(runErr error, manifest *session.RunManifest) error {

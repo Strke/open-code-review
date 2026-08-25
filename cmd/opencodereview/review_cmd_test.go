@@ -30,6 +30,16 @@ func TestValidateReviewOptionsRejectsMixedPatchAndGitModes(t *testing.T) {
 	}
 }
 
+func TestReviewFailureSessionMessage(t *testing.T) {
+	const id = "session-123"
+	if got := reviewFailureSessionMessage(id, reviewOptions{diffDir: "patches"}); strings.Contains(got, "--resume") {
+		t.Fatalf("patch failure message recommends unsupported resume: %q", got)
+	}
+	if got := reviewFailureSessionMessage(id, reviewOptions{commit: "HEAD"}); !strings.Contains(got, "--resume "+id) {
+		t.Fatalf("commit failure message = %q, want resume hint", got)
+	}
+}
+
 func TestReviewModeFromOptionsPatch(t *testing.T) {
 	if got := reviewModeFromOptions(reviewOptions{diffDir: "patches"}); got != session.ReviewModePatch {
 		t.Fatalf("reviewModeFromOptions() = %q, want %q", got, session.ReviewModePatch)
