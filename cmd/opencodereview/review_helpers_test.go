@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alibaba/open-code-review/internal/model"
@@ -101,6 +102,20 @@ func TestPreviewDiffApplyDoesNotRequireApplicablePatch(t *testing.T) {
 		outputFormat: "json",
 	}); err != nil {
 		t.Fatalf("preview should not apply patches: %v", err)
+	}
+}
+
+func TestExecuteReviewRejectsInvalidPatchDirectoryUpfront(t *testing.T) {
+	dir := initTestGitRepo(t)
+	missing := filepath.Join(t.TempDir(), "missing")
+	err := executeReviewContext(context.Background(), reviewOptions{
+		repoDir:      dir,
+		diffDir:      missing,
+		preview:      true,
+		outputFormat: "json",
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate --patch") {
+		t.Fatalf("error = %v, want upfront --patch validation error", err)
 	}
 }
 

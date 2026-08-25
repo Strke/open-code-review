@@ -45,6 +45,37 @@ func TestPatchProviderRejectsEmptyDirectory(t *testing.T) {
 	}
 }
 
+func TestValidatePatchDirectory(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		if err := ValidatePatchDirectory(filepath.Join(t.TempDir(), "missing")); err == nil {
+			t.Fatal("expected missing patch directory error")
+		}
+	})
+	t.Run("file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "change.patch")
+		if err := os.WriteFile(path, []byte("patch"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidatePatchDirectory(path); err == nil {
+			t.Fatal("expected non-directory patch path error")
+		}
+	})
+	t.Run("no patches", func(t *testing.T) {
+		if err := ValidatePatchDirectory(t.TempDir()); err == nil {
+			t.Fatal("expected directory without patch files error")
+		}
+	})
+	t.Run("valid", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "change.diff"), []byte("patch"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidatePatchDirectory(dir); err != nil {
+			t.Fatalf("ValidatePatchDirectory: %v", err)
+		}
+	})
+}
+
 func TestPatchProviderRejectsNonEmptyUnparseablePatch(t *testing.T) {
 	patchDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(patchDir, "invalid.patch"), []byte("not a unified diff\n"), 0o644); err != nil {

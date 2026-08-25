@@ -120,6 +120,11 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	if err != nil {
 		return err
 	}
+	if opts.diffDir != "" {
+		if err := diff.ValidatePatchDirectory(opts.diffDir); err != nil {
+			return fmt.Errorf("validate --patch: %w", err)
+		}
+	}
 	applyCLIExcludes(cc, splitPaths(opts.excludes))
 
 	// Security (#112): reject ref-option injection before any git invocation.

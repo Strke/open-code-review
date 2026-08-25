@@ -69,6 +69,13 @@ func patchPaths(diffDir string) ([]string, error) {
 	return paths, nil
 }
 
+// ValidatePatchDirectory verifies that path is a readable directory containing
+// at least one supported patch file.
+func ValidatePatchDirectory(path string) error {
+	_, err := patchPaths(path)
+	return err
+}
+
 // stripBinaryPatchSections removes binary file sections that do not carry blob
 // data. External PR patches commonly contain only "Binary files ... differ",
 // which git apply cannot materialize when the new blob is not in the object
