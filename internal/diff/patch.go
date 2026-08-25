@@ -199,5 +199,8 @@ func (p *PatchProvider) GetDiff(ctx context.Context) ([]model.Diff, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse patches: %w", err)
 	}
+	if len(parsed) == 0 && strings.TrimSpace(combined.String()) != "" {
+		return nil, fmt.Errorf("parse patches: patch files contain content but no file diffs")
+	}
 	return parsed, nil
 }

@@ -45,6 +45,17 @@ func TestPatchProviderRejectsEmptyDirectory(t *testing.T) {
 	}
 }
 
+func TestPatchProviderRejectsNonEmptyUnparseablePatch(t *testing.T) {
+	patchDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(patchDir, "invalid.patch"), []byte("not a unified diff\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provider := NewPatchProvider(t.TempDir(), patchDir, "", nil)
+	if _, err := provider.GetDiff(context.Background()); err == nil {
+		t.Fatal("expected non-empty unparseable patch error")
+	}
+}
+
 func TestPatchProviderReadsPostImageFromRef(t *testing.T) {
 	repo := initBareRepo(t)
 	writeCommit(t, repo, "a.go", "package a\n\nfunc A() {}\n", "post-image")
