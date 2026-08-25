@@ -85,6 +85,25 @@ func TestRunPreviewUsesPatchDirectory(t *testing.T) {
 	}
 }
 
+func TestPreviewDiffApplyDoesNotRequireApplicablePatch(t *testing.T) {
+	dir := initTestGitRepo(t)
+	gitCommitFile(t, dir, "x.go", "package x\n", "base")
+	patchDir := t.TempDir()
+	badPatch := "diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-package wrong\n+package changed\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "bad.patch"), []byte(badPatch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := executeReviewContext(context.Background(), reviewOptions{
+		repoDir:      dir,
+		diffDir:      patchDir,
+		diffApply:    true,
+		preview:      true,
+		outputFormat: "json",
+	}); err != nil {
+		t.Fatalf("preview should not apply patches: %v", err)
+	}
+}
+
 // TestRunPreviewCreatesNoSession pins that previewing never opens session
 // persistence. Building the agent with agent.New auto-created a session, which
 // left an unfinalized (and usually empty) JSONL file under the OCR home even

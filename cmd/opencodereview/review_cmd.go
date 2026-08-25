@@ -137,12 +137,6 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		if head == "" {
 			return fmt.Errorf("resolve patch post-image ref %q in --repo", ref)
 		}
-		if opts.diffApply {
-			head, err = diff.MaterializePatchCommit(ctx, cc.RepoDir, opts.diffDir, head, cc.GitRunner)
-			if err != nil {
-				return fmt.Errorf("materialize patch post-image: %w", err)
-			}
-		}
 		patchInput = &diff.InputResolution{ResolvedHead: head}
 	}
 
@@ -154,6 +148,13 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 
 	if opts.preview {
 		return runPreviewContext(ctx, cc, opts, patchInput)
+	}
+	if opts.diffApply && patchInput != nil {
+		head, err := diff.MaterializePatchCommit(ctx, cc.RepoDir, opts.diffDir, patchInput.ResolvedHead, cc.GitRunner)
+		if err != nil {
+			return fmt.Errorf("materialize patch post-image: %w", err)
+		}
+		patchInput.ResolvedHead = head
 	}
 
 	resumeState, err := loadReviewResumeState(cc.RepoDir, opts)
