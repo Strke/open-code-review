@@ -20,7 +20,7 @@ func TestPatchProviderReadsPatchDirectoryInOrder(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(patchDir, "002.patch"), []byte(patch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	provider := NewPatchProvider(repo, patchDir, nil)
+	provider := NewPatchProvider(repo, patchDir, "", nil)
 	diffs, err := provider.GetDiff(context.Background())
 	if err != nil {
 		t.Fatalf("GetDiff: %v", err)
@@ -31,8 +31,35 @@ func TestPatchProviderReadsPatchDirectoryInOrder(t *testing.T) {
 }
 
 func TestPatchProviderRejectsEmptyDirectory(t *testing.T) {
-	provider := NewPatchProvider(t.TempDir(), t.TempDir(), nil)
+	provider := NewPatchProvider(t.TempDir(), t.TempDir(), "", nil)
 	if _, err := provider.GetDiff(context.Background()); err == nil {
 		t.Fatal("expected empty patch directory error")
+	}
+}
+
+func TestPatchProviderReadsPostImageFromRef(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package a\n\nfunc A() {}\n", "post-image")
+	head := gitOut(t, repo, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package drifted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1,3 @@\n package a\n+\n+func A() {}\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := NewPatchProvider(repo, patchDir, head, nil)
+	diffs, err := provider.GetDiff(context.Background())
+	if err != nil {
+		t.Fatalf("GetDiff: %v", err)
+	}
+	if got, want := diffs[0].NewFileContent, "package a\n\nfunc A() {}\n"; got != want {
+		t.Fatalf("NewFileContent = %q, want committed post-image %q", got, want)
+	}
+	if got := provider.ResolveInput(context.Background()).ResolvedHead; got != head {
+		t.Fatalf("ResolvedHead = %q, want %q", got, head)
 	}
 }

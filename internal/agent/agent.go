@@ -519,7 +519,17 @@ func (a *Agent) loadDiffs(ctx context.Context) error {
 
 	switch {
 	case a.args.DiffDir != "":
-		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, a.args.GitRunner)
+		var ref string
+		if a.args.SealedInput != nil {
+			ref = a.args.SealedInput.ResolvedHead
+		}
+		if ref == "" {
+			ref = diff.NewCommitProvider(a.args.RepoDir, "HEAD", a.args.GitRunner).ResolveInput(ctx).ResolvedHead
+			if ref == "" {
+				return fmt.Errorf("resolve repository HEAD for patch post-image")
+			}
+		}
+		provider = diff.NewPatchProvider(a.args.RepoDir, a.args.DiffDir, ref, a.args.GitRunner)
 	case commit != "":
 		provider = diff.NewCommitProvider(a.args.RepoDir, commit, a.args.GitRunner)
 	case from != "" && to != "":

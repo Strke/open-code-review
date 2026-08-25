@@ -20,14 +20,17 @@ import (
 type PatchProvider struct {
 	repoDir string
 	diffDir string
+	ref     string
 	runner  *gitcmd.Runner
 }
 
-func NewPatchProvider(repoDir, diffDir string, runner *gitcmd.Runner) *PatchProvider {
-	return &PatchProvider{repoDir: repoDir, diffDir: diffDir, runner: runner}
+func NewPatchProvider(repoDir, diffDir, ref string, runner *gitcmd.Runner) *PatchProvider {
+	return &PatchProvider{repoDir: repoDir, diffDir: diffDir, ref: ref, runner: runner}
 }
 
-func (p *PatchProvider) ResolveInput(context.Context) InputResolution { return InputResolution{} }
+func (p *PatchProvider) ResolveInput(context.Context) InputResolution {
+	return InputResolution{ResolvedHead: p.ref}
+}
 
 func (p *PatchProvider) RemoteIdentity(context.Context) string { return "" }
 
@@ -73,7 +76,7 @@ func (p *PatchProvider) GetDiff(ctx context.Context) ([]model.Diff, error) {
 		combined.Write(data)
 		combined.WriteString("\n")
 	}
-	parsed, err := ParseDiffText(ctx, combined.String(), p.repoDir, "", p.runner)
+	parsed, err := ParseDiffText(ctx, combined.String(), p.repoDir, p.ref, p.runner)
 	if err != nil {
 		return nil, fmt.Errorf("parse patches: %w", err)
 	}

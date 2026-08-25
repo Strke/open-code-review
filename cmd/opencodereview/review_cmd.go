@@ -122,6 +122,15 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		return err
 	}
 
+	var patchInput *diff.InputResolution
+	if opts.diffDir != "" {
+		head := diff.NewCommitProvider(cc.RepoDir, "HEAD", cc.GitRunner).ResolveInput(ctx).ResolvedHead
+		if head == "" {
+			return fmt.Errorf("resolve --repo HEAD for patch post-image")
+		}
+		patchInput = &diff.InputResolution{ResolvedHead: head}
+	}
+
 	bg, err := resolveBackground(cc.RepoDir, opts.background, opts.backgroundFile, opts.commit)
 	if err != nil {
 		return err
@@ -129,7 +138,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	opts.background = bg
 
 	if opts.preview {
-		return runPreviewContext(ctx, cc, opts)
+		return runPreviewContext(ctx, cc, opts, patchInput)
 	}
 
 	resumeState, err := loadReviewResumeState(cc.RepoDir, opts)
@@ -167,9 +176,14 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	var sealedInput *diff.InputResolution
 	if sealed != nil {
 		sealedInput = &sealed.Resolution
+	} else if patchInput != nil {
+		sealedInput = patchInput
 	}
 
 	mode := tool.ParseReviewMode(opts.from, opts.to, opts.commit)
+	if opts.diffDir != "" {
+		mode = tool.ModeCommit
+	}
 	fileReader := &tool.FileReader{
 		RepoDir: cc.RepoDir,
 		Mode:    mode,
@@ -474,14 +488,16 @@ func validateReviewRefs(repoDir string, opts reviewOptions) error {
 	return nil
 }
 
-func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOptions) error {
+func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOptions, sealedInput *diff.InputResolution) error {
 	preview, err := agent.Preview(ctx, agent.Args{
-		RepoDir:    cc.RepoDir,
-		From:       opts.from,
-		To:         opts.to,
-		Commit:     opts.commit,
-		FileFilter: cc.FileFilter,
-		GitRunner:  cc.GitRunner,
+		RepoDir:     cc.RepoDir,
+		From:        opts.from,
+		To:          opts.to,
+		Commit:      opts.commit,
+		DiffDir:     opts.diffDir,
+		FileFilter:  cc.FileFilter,
+		GitRunner:   cc.GitRunner,
+		SealedInput: sealedInput,
 	})
 	if err != nil {
 		return fmt.Errorf("preview failed: %w", err)

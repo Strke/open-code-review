@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/alibaba/open-code-review/internal/model"
@@ -12,7 +14,7 @@ import (
 )
 
 func runPreview(cc *commonContext, opts reviewOptions) error {
-	return runPreviewContext(context.Background(), cc, opts)
+	return runPreviewContext(context.Background(), cc, opts, nil)
 }
 
 func TestRunPreview(t *testing.T) {
@@ -56,6 +58,30 @@ func TestRunPreviewJSONFormat(t *testing.T) {
 	}
 	if got.Entries[0].ExcludeReason != model.ExcludeExtension {
 		t.Errorf("exclude_reason = %q, want %q", got.Entries[0].ExcludeReason, model.ExcludeExtension)
+	}
+}
+
+func TestRunPreviewUsesPatchDirectory(t *testing.T) {
+	dir := initTestGitRepo(t)
+	gitCommitFile(t, dir, "x.go", "package x\n\nfunc X() {}\n", "post-image")
+	patchDir := t.TempDir()
+	patch := "diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1,3 @@\n package x\n+\n+func X() {}\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cc, err := loadCommonContext(dir, "", 0, 0, true)
+	if err != nil {
+		t.Fatalf("loadCommonContext: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := runPreviewContext(context.Background(), cc, reviewOptions{diffDir: patchDir, outputFormat: "json"}, nil); err != nil {
+			t.Errorf("runPreviewContext error: %v", err)
+		}
+	})
+	got := decodeSinglePreviewJSON(t, out)
+	if got.TotalFiles != 1 || got.Entries[0].Path != "x.go" {
+		t.Fatalf("preview = %+v, want patch entry x.go", got)
 	}
 }
 
