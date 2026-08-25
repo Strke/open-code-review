@@ -128,7 +128,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	}
 
 	var patchInput *diff.InputResolution
-	if opts.diffDir != "" {
+	if opts.diffDir != "" && (opts.branch != "" || (opts.diffApply && !opts.preview)) {
 		ref := opts.branch
 		if ref == "" {
 			ref = "HEAD"
@@ -197,7 +197,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 	}
 
 	mode := tool.ParseReviewMode(opts.from, opts.to, opts.commit)
-	if opts.diffDir != "" {
+	if opts.diffDir != "" && (opts.branch != "" || opts.diffApply) {
 		mode = tool.ModeCommit
 	}
 	fileReader := &tool.FileReader{
@@ -228,6 +228,7 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) error {
 		Commit:                opts.commit,
 		DiffDir:               opts.diffDir,
 		PatchRef:              opts.branch,
+		DiffApply:             opts.diffApply,
 		ReviewMode:            reviewModeFromOptions(opts),
 		Template:              *cc.Template,
 		SystemRule:            cc.Resolver,
@@ -514,6 +515,7 @@ func runPreviewContext(ctx context.Context, cc *commonContext, opts reviewOption
 		Commit:      opts.commit,
 		DiffDir:     opts.diffDir,
 		PatchRef:    opts.branch,
+		DiffApply:   opts.diffApply && sealedInput != nil,
 		FileFilter:  cc.FileFilter,
 		GitRunner:   cc.GitRunner,
 		SealedInput: sealedInput,

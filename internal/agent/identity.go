@@ -67,7 +67,7 @@ func ResolveIdentity(ctx context.Context, args Args) (*SealedInput, error) {
 // merge-base against that frozen head; commit mode needs only the frozen head.
 func resolveInputBeforeDiff(ctx context.Context, args Args) (*diff.InputResolution, error) {
 	switch {
-	case args.DiffDir != "":
+	case args.DiffDir != "" && (args.PatchRef != "" || args.DiffApply):
 		ref := args.PatchRef
 		if ref == "" {
 			ref = "HEAD"

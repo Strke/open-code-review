@@ -72,6 +72,30 @@ func TestPatchProviderReadsPostImageFromRef(t *testing.T) {
 	}
 }
 
+func TestPatchProviderWithoutRefReadsWorkspacePostImage(t *testing.T) {
+	repo := initBareRepo(t)
+	writeCommit(t, repo, "a.go", "package old\n", "base")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "added.go"), []byte("package added\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patchDir := t.TempDir()
+	patch := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-package old\n+package new\n"
+	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provider := NewPatchProvider(repo, patchDir, "", nil)
+	diffs, err := provider.GetDiff(context.Background())
+	if err != nil {
+		t.Fatalf("GetDiff: %v", err)
+	}
+	if got := diffs[0].NewFileContent; got != "package new\n" {
+		t.Fatalf("NewFileContent = %q, want workspace post-image", got)
+	}
+}
+
 func TestMaterializePatchCommit(t *testing.T) {
 	repo := initBareRepo(t)
 	writeCommit(t, repo, "a.go", "package a\n", "base")

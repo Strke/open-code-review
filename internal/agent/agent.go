@@ -68,6 +68,8 @@ type Args struct {
 	// PatchRef is the repository ref whose tip is the patch post-image.
 	// Empty selects HEAD.
 	PatchRef string
+	// DiffApply indicates that the patch input is materialized before review.
+	DiffApply bool
 
 	// ReviewMode is one of "workspace", "range", "commit", or "patch".
 	// When empty, it is derived from From/To/Commit at session creation time.
@@ -526,11 +528,8 @@ func (a *Agent) loadDiffs(ctx context.Context) error {
 		if a.args.SealedInput != nil {
 			ref = a.args.SealedInput.ResolvedHead
 		}
-		if ref == "" {
+		if ref == "" && a.args.PatchRef != "" {
 			patchRef := a.args.PatchRef
-			if patchRef == "" {
-				patchRef = "HEAD"
-			}
 			ref = diff.NewCommitProvider(a.args.RepoDir, patchRef, a.args.GitRunner).ResolveInput(ctx).ResolvedHead
 			if ref == "" {
 				return fmt.Errorf("resolve patch post-image ref %q", patchRef)
