@@ -66,7 +66,7 @@ type Args struct {
 	// DiffDir contains externally supplied unified diff files for patch mode.
 	DiffDir string
 	// PatchRef is the repository ref whose tip is the patch post-image.
-	// Empty keeps patch mode on the working-tree post-image; diff-apply uses
+	// Empty keeps patch mode on the working-tree post-image; apply-patch uses
 	// HEAD as its base only when no branch is specified.
 	PatchRef string
 	// DiffApply indicates that the patch input is materialized before review.
