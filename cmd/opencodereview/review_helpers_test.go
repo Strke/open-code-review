@@ -71,13 +71,13 @@ func TestRunPreviewUsesPatchDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(patchDir, "change.patch"), []byte(patch), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cc, err := loadCommonContext(dir, "", 0, 0, true)
+	cc, err := loadCommonContext(dir, "", "", 0, 0, true)
 	if err != nil {
 		t.Fatalf("loadCommonContext: %v", err)
 	}
 
 	out := captureStdout(t, func() {
-		if err := runPreviewContext(context.Background(), cc, reviewOptions{diffDir: patchDir, outputFormat: "json"}, nil); err != nil {
+		if err := runPreviewContext(context.Background(), cc, reviewOptions{diffDir: patchDir, outputFormat: "json"}, os.Stdout, nil); err != nil {
 			t.Errorf("runPreviewContext error: %v", err)
 		}
 	})
