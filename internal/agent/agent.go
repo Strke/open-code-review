@@ -647,7 +647,8 @@ func (a *Agent) dispatchSubtasks(ctx context.Context) ([]model.LlmComment, error
 
 	// Group files semantically via LLM.
 	groupResult := groupDiffs(ctx, nonDeleted, a.args.LLMClient, a.args.Model,
-		a.args.Template, llmloop.PromptTokenLimit(a.args.Template.MaxTokens))
+		a.args.Template, llmloop.PromptTokenLimit(a.args.Template.MaxTokens),
+		&groupingSessionOpts{session: a.session, provider: a.args.Provider, model: a.args.Model})
 	groups := groupResult.groups
 	a.fileGroups = groups
 	if groupResult.usage != nil {
@@ -662,10 +663,7 @@ func (a *Agent) dispatchSubtasks(ctx context.Context) ([]model.LlmComment, error
 	}
 
 	sem := make(chan struct{}, concurrency)
-	timeout := time.Duration(a.args.ConcurrentTaskTimeout) * time.Minute
-	if timeout > 0 && a.args.Template.ReviewRounds() > 1 {
-		timeout = timeout + timeout/2
-	}
+	timeout := time.Duration(a.args.ConcurrentTaskTimeout) * time.Minute * time.Duration(a.args.Template.ReviewRounds())
 
 	var dispatched int64
 dispatchLoop:
@@ -1607,6 +1605,22 @@ func buildConcatenatedDiffs(diffs []model.Diff) string {
 	return sb.String()
 }
 
+// formatDiffEntry renders one changed file as STATUS   path (+N/-M). It is the
+// shared shape for both the grouping file list and the other-changed-files
+// block, so every prompt that enumerates files presents them identically.
+func formatDiffEntry(d model.Diff) string {
+	status := "MODIFIED"
+	switch {
+	case d.IsNew:
+		status = "ADDED"
+	case d.IsDeleted:
+		status = "DELETED"
+	case d.IsRenamed:
+		status = "RENAMED"
+	}
+	return fmt.Sprintf("%s   %s (+%d/-%d)", status, d.NewPath, d.Insertions, d.Deletions)
+}
+
 // buildChangeFilesExceptGroup returns a formatted list of changed files excluding all group members.
 func (a *Agent) buildChangeFilesExceptGroup(groupDiffs []model.Diff) string {
 	exclude := make(map[string]bool, len(groupDiffs))
@@ -1619,15 +1633,6 @@ func (a *Agent) buildChangeFilesExceptGroup(groupDiffs []model.Diff) string {
 		if d.IsBinary || exclude[d.NewPath] || exclude[d.OldPath] {
 			continue
 		}
-		status := "MODIFIED"
-		switch {
-		case d.IsNew:
-			status = "ADDED"
-		case d.IsDeleted:
-			status = "DELETED"
-		case d.OldPath != d.NewPath:
-			status = "RENAMED"
-		}
 		// Separator before the entry, conditional on something already being
 		// written, rather than after it conditional on the a.diffs index: the loop
 		// skips binaries and group members, so an index-based test emits a trailing
@@ -1636,7 +1641,7 @@ func (a *Agent) buildChangeFilesExceptGroup(groupDiffs []model.Diff) string {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(status + "   " + d.NewPath)
+		sb.WriteString(formatDiffEntry(d))
 	}
 	return sb.String()
 }
@@ -1834,11 +1839,10 @@ func (a *Agent) executeGroupReviewFilter(ctx context.Context, g FileGroup, from 
 
 	_, llmSpan := telemetry.StartLLMSpan(ctx, a.args.Model)
 	resp, err := a.args.LLMClient.CompletionsWithCtx(reqCtx, llm.ChatRequest{
-		Model:      a.args.Model,
-		Messages:   messages,
-		Tools:      filterTools,
-		ToolChoice: "required",
-		MaxTokens:  a.args.Template.CompletionTokenLimit(),
+		Model:     a.args.Model,
+		Messages:  messages,
+		Tools:     filterTools,
+		MaxTokens: a.args.Template.CompletionTokenLimit(),
 	})
 	duration := time.Since(startTime)
 	if err != nil {
