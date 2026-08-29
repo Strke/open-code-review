@@ -134,11 +134,6 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) (retErr error
 	if err != nil {
 		return err
 	}
-	if opts.diffDir != "" {
-		if err := diff.ValidatePatchDirectory(opts.diffDir); err != nil {
-			return fmt.Errorf("validate --patch: %w", err)
-		}
-	}
 	applyCLIExcludes(cc, splitPaths(opts.excludes))
 
 	// Security (#112): reject ref-option injection before any git invocation.
@@ -146,17 +141,9 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) (retErr error
 		return err
 	}
 
-	var patchInput *diff.InputResolution
-	if opts.diffDir != "" {
-		ref := opts.branch
-		if ref == "" {
-			ref = "HEAD"
-		}
-		head := diff.NewCommitProvider(cc.RepoDir, ref, cc.GitRunner).ResolveInput(ctx).ResolvedHead
-		if head == "" {
-			return fmt.Errorf("resolve patch post-image ref %q in --repo", ref)
-		}
-		patchInput = &diff.InputResolution{ResolvedHead: head}
+	patchInput, err := resolvePatchInput(ctx, cc, opts)
+	if err != nil {
+		return err
 	}
 
 	bg, err := resolveBackground(cc.RepoDir, opts.background, opts.backgroundFile, opts.commit)
@@ -167,13 +154,6 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) (retErr error
 
 	if opts.preview {
 		return runPreviewContext(ctx, cc, opts, out, patchInput)
-	}
-	if opts.diffApply && patchInput != nil {
-		head, err := diff.MaterializePatchCommit(ctx, cc.RepoDir, opts.diffDir, patchInput.ResolvedHead, cc.GitRunner)
-		if err != nil {
-			return fmt.Errorf("materialize patch post-image: %w", err)
-		}
-		patchInput.ResolvedHead = head
 	}
 
 	resumeState, err := loadReviewResumeState(cc.RepoDir, opts)
@@ -213,17 +193,8 @@ func executeReviewContext(ctx context.Context, opts reviewOptions) (retErr error
 		Model:    rt.Model,
 	}
 
-	var sealedInput *diff.InputResolution
-	if sealed != nil {
-		sealedInput = &sealed.Resolution
-	} else if patchInput != nil {
-		sealedInput = patchInput
-	}
+	sealedInput, mode := resolveSealedReadState(sealed, patchInput, opts)
 
-	mode := tool.ParseReviewMode(opts.from, opts.to, opts.commit)
-	if opts.diffDir != "" && (opts.branch != "" || opts.diffApply) {
-		mode = tool.ModeCommit
-	}
 	fileReader := &tool.FileReader{
 		RepoDir: cc.RepoDir,
 		Mode:    mode,
@@ -457,6 +428,67 @@ func validateResumeIdentity(ctx context.Context, cc *commonContext, opts reviewO
 		return nil, err
 	}
 	return sealed, nil
+}
+
+// resolvePatchInput resolves the post-image identity for a --patch run and
+// returns it as an InputResolution; a non-patch run gets (nil, nil).
+//
+// It bundles the three patch-specific steps that used to be scattered through
+// executeReviewContext: upfront directory validation, resolution of the ref
+// the patch applies against (--branch, defaulting to HEAD), and, for
+// --apply-patch, materialization of the patch into an unreferenced commit.
+// The resolved head is then pinned to that materialized commit, so every
+// consumer downstream sees one immutable post-image.
+//
+// Materialization is skipped in preview mode: a preview must stay a cheap,
+// side-effect-free projection of what a run would review, even an
+// unapplicable patch must not fail it.
+func resolvePatchInput(ctx context.Context, cc *commonContext, opts reviewOptions) (*diff.InputResolution, error) {
+	if opts.diffDir == "" {
+		return nil, nil
+	}
+	if err := diff.ValidatePatchDirectory(opts.diffDir); err != nil {
+		return nil, fmt.Errorf("validate --patch: %w", err)
+	}
+	ref := opts.branch
+	if ref == "" {
+		ref = "HEAD"
+	}
+	head := diff.NewCommitProvider(cc.RepoDir, ref, cc.GitRunner).ResolveInput(ctx).ResolvedHead
+	if head == "" {
+		return nil, fmt.Errorf("resolve patch post-image ref %q in --repo", ref)
+	}
+	patchInput := &diff.InputResolution{ResolvedHead: head}
+	if !opts.preview && opts.diffApply {
+		materialized, err := diff.MaterializePatchCommit(ctx, cc.RepoDir, opts.diffDir, patchInput.ResolvedHead, cc.GitRunner)
+		if err != nil {
+			return nil, fmt.Errorf("materialize patch post-image: %w", err)
+		}
+		patchInput.ResolvedHead = materialized
+	}
+	return patchInput, nil
+}
+
+// resolveSealedReadState picks what the run reads files against: the resolution
+// a successful resume admission sealed, falling back to the patch post-image,
+// plus the review mode file_read should use.
+//
+// The sealed resolution wins over the patch input because admission pinned the
+// run to the very commits it validated; re-deriving them from the ref would
+// let a ref that moved since reopen the sealed/actual mismatch the sealing
+// exists to prevent.
+func resolveSealedReadState(sealed *agent.SealedInput, patchInput *diff.InputResolution, opts reviewOptions) (*diff.InputResolution, tool.ReviewMode) {
+	var sealedInput *diff.InputResolution
+	if sealed != nil {
+		sealedInput = &sealed.Resolution
+	} else {
+		sealedInput = patchInput
+	}
+	mode := tool.ParseReviewMode(opts.from, opts.to, opts.commit)
+	if opts.diffDir != "" && (opts.branch != "" || opts.diffApply) {
+		mode = tool.ModeCommit
+	}
+	return sealedInput, mode
 }
 
 // fileReadRef picks the ref file_read resolves paths against.
